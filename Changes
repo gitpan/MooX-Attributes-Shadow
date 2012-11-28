@@ -1,3 +1,12 @@
+0.01_02 -  Mon Nov 19 13:49:14 EST 2012
+
+    * after the first call to shadowable_attrs(), it will return the
+      attributes which may be shadowed.
+
+    * new routine shadowed_attrs(), returns the attributes actually
+      shadowed in a container.
+
+
 0.01 -	Fri Nov 16 16:35:51 EST 2012
 
     * initial release to an unsuspecting world

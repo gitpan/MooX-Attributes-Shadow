@@ -23,6 +23,8 @@ package MooX::Attributes::Shadow::Role;
 
 use strict;
 
+our $VERSION = '0.01_03';
+
 use Moo::Role;
 
 use MooX::Attributes::Shadow ':all';
@@ -35,8 +37,9 @@ sub shadowable_attrs (@) {
 
     ## no critic (ProhibitNoStrict)
     no strict 'refs';
+    no warnings 'redefine';
 
-    *{ caller . '::_shadowable_attrs'} = sub { @{$attrs} };
+    *{ caller() . '::shadowable_attrs' } = sub (@) { @{$attrs} };
 
     return;
 }
@@ -107,6 +110,13 @@ integrate the shadowable attributes into their interface.
 This is called by the contained class to identify which attributes are
 available for shadowing.  It does B<not> create them, it merely
 records them.
+
+Subsequent calls will return the names of the attributes which may be
+shadowed as an array:
+
+   Class->shadowable_attrs( qw[ a b c ] );
+   @attrs = Class->shadowable_attrs;
+
 
 =back
 

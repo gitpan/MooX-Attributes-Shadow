@@ -17,4 +17,6 @@ is ( $obj->foo->a, 3, 'contained attribute a' );
 
 is ( $obj->foo->b, 'b', 'contained attribute b' );
 
+is_deeply( [ sort $obj->foo->shadowable_attrs ], [ qw( a b ) ], 'shadowable attrs' );
+
 done_testing;

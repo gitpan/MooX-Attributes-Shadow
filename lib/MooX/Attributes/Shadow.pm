@@ -24,14 +24,15 @@ package MooX::Attributes::Shadow;
 use strict;
 use warnings;
 
-our $VERSION = '0.01';
+our $VERSION = '0.01_03';
 
 use Carp;
 use Params::Check qw[ check last_error ];
+use Scalar::Util qw[ blessed ];
 
 use Exporter 'import';
 
-our %EXPORT_TAGS = ( all => [ qw( shadow_attrs xtract_attrs) ],
+our %EXPORT_TAGS = ( all => [ qw( shadow_attrs shadowed_attrs xtract_attrs ) ],
 		   );
 Exporter::export_ok_tags('all');
 
@@ -46,68 +47,89 @@ sub shadow_attrs {
     my $to = caller;
 
     my $args = check( {
-		       fmt => { allow => sub { ref $_[0]  eq 'CODE' } },
-		       attrs => { allow => sub { ref $_[0] eq 'ARRAY' && @{$_[0]}},
-				},
-		       private => { default => 1 },
-		       instance => { },
-		       },
-		      { @_ } )
-      or croak( "error parsing arguments: ", last_error, "\n" );
+            fmt => {
+                allow => sub { ref $_[0] eq 'CODE' }
+            },
+            attrs => { allow => sub { ref $_[0] eq 'ARRAY' && @{ $_[0] } }, },
+            private  => { default => 1 },
+            instance => {},
+        },
+        {@_} ) or croak( "error parsing arguments: ", last_error, "\n" );
 
 
     unless ( exists $args->{attrs} ) {
 
-	$args->{attrs} = [ eval { $from->_shadowable_attrs } ];
+        $args->{attrs} = [ eval { $from->shadowable_attrs } ];
 
-	croak( "must specify attrs or call shadowable_attrs in shadowed class" ) if $@;
+        croak( "must specify attrs or call shadowable_attrs in shadowed class" )
+          if $@;
 
     }
 
     my $has = "${to}::has";
+
     my %map;
     for my $attr ( @{ $args->{attrs} } ) {
 
-	my $alias = $args->{fmt} ? $args->{fmt}->( $attr ) : $attr;
-	my $priv = $args->{private} ? "_shadow_${from}_${alias}" : $alias;
-	$priv =~ s/::/_/g;
-	$map{$attr} = { priv => $priv, alias => $alias };
+        my $alias = $args->{fmt}     ? $args->{fmt}->( $attr )    : $attr;
+        my $priv  = $args->{private} ? "_shadow_${from}_${alias}" : $alias;
+        $priv =~ s/::/_/g;
+        $map{$attr} = { priv => $priv, alias => $alias };
 
-	## no critic (ProhibitNoStrict)
-	no strict 'refs';
-	$has->( $priv => ( is => 'ro',
- 				    init_arg => $alias,
-				    predicate => "_has_${priv}",
-				  )
-	      );
+        ## no critic (ProhibitNoStrict)
+        no strict 'refs';
+        $has->(
+            $priv => (
+                is        => 'ro',
+                init_arg  => $alias,
+                predicate => "_has_${priv}",
+            ) );
 
     }
 
     if ( defined $args->{instance} ) {
 
-	$MAP{$from}{$to}{instance}{$args->{instance}} = \%map;
+        $MAP{$from}{$to}{instance}{ $args->{instance} } = \%map;
 
     }
 
     else {
 
-	$MAP{$from}{$to}{default} = \%map;
+        $MAP{$from}{$to}{default} = \%map;
 
     }
 
     return;
 }
 
+sub _resolve_attr_env {
+
+    my ( $from, $to, $instance ) = @_;
+
+    # from should be resolved into a class name
+    $from = blessed $from || $from;
+
+    # allow $to to be either a class or an object
+    my $Class_to   = blessed $to   || $to;
+
+    my $map = defined $instance ? $MAP{$from}{$Class_to}{instance}{$instance} : $MAP{$from}{$Class_to}{default};
+
+    croak( "attributes must first be shadowed using ${from}::shadow_attrs\n" )
+      unless defined $map;
+
+    return ( $from, $to, $instance, $map );
+}
+
+sub shadowed_attrs {
+
+    my ( $from, $to, $instance, $map )= &_resolve_attr_env;
+
+    return { map { $_, $map->{$_}{alias} } keys %$map }
+}
+
 sub xtract_attrs {
 
-    my ( $from, $obj, $instance ) = @_;
-    my $to = ref $obj;
-
-
-    my $map = defined $instance ? $MAP{$from}{$to}{instance}{$instance} : $MAP{$from}{$to}{default};
-
-    croak( "attributes must first be shadowed using ", __PACKAGE__, "::shadow_attrs\n" )
-      unless defined $map;
+    my ( $from, $to, $instance, $map )= &_resolve_attr_env;
 
     my %attr;
     while( my ($attr, $names) = each %$map ) {
@@ -115,8 +137,8 @@ sub xtract_attrs {
 	my $priv = $names->{priv};
 	my $has = "_has_${priv}";
 
-	$attr{$attr} = $obj->$priv
-	  if $obj->$has;
+	$attr{$attr} = $to->$priv
+	  if $to->$has;
     }
 
     return %attr;
@@ -227,12 +249,27 @@ the B<Moo> C<has> subroutine).  This defaults to true.
 
 =back
 
+=item B<shadowed_attrs>
+
+  $attrs = shadowed_attrs( $contained, $container, $instance );
+
+Return a hash of attributes shadowed from C<$contained> into
+C<$container>.  C<$contained> and C<$container> may either be a class
+name or an object. The C<$instance> parameter is optional, and
+indicates the contained object instance whose attributes should be
+extracted.
+
+The hash keys are the attribute names in the contained class; the
+hash values are the attribute names in the container class.
+
 =item B<xtract_attrs>
 
-  %attrs = xtract_attrs( $contained_class, $container_obj, $instance );
+  %attrs = xtract_attrs( $contained, $container_obj, $instance );
 
 After the container class is instantiated, B<xtract_attrs> is used to
-extract attributes for B<$contained_class> from the container object.
+extract attributes for the contained object from the container object.
+C<$contained> may be either a class name or an object in the contained
+class.
 
 The C<$instance> parameter is optional, and indicates the contained
 object instance whose attributes should be extracted.
