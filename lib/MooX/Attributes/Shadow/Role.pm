@@ -23,7 +23,7 @@ package MooX::Attributes::Shadow::Role;
 
 use strict;
 
-our $VERSION = '0.01_03';
+our $VERSION = '0.01_04';
 
 use Moo::Role;
 
@@ -78,13 +78,13 @@ MooX::Attributes::Shadow::Role - enumerate shadowable attributes in a contained 
   # specify which ones
   Foo->shadow_attrs( fmt => sub { 'pfx_' . shift } );
 
-  # later in the code, use the attributes when creating a new Foo
-  # object.
-
-  sub create_foo {
-    my $self = shift;
-    my $foo = Foo->new( Foo->xtract_attrs( $self ) );
-  }
+  # create an attribute which holds the contained oject, and
+  # delegate the shadowed accessors to it.
+  has foo   => ( is => 'ro',
+                 lazy => 1,
+                 default => sub { Foo->new( Foo->xtract_attrs(  shift ) ) },
+                 handles => Foo->shadowed_attrs(  __PACKAGE__ ),
+               );
 
 
 =head1 DESCRIPTION
@@ -129,34 +129,29 @@ shadowed as an array:
 
    ContainedClass->shadow_attrs( %options );
 
-This method creates attributes shadowing the I<ContainedClass>'s
-shadowable attributes in the class which calls it.  The attributes are
-created as read-only.  There is no means of specifying additional
-attribute options.
+This method creates read-only attributes shadowing the
+I<ContainedClass>'s shadowable attributes in the class which calls it.
+See L<MooX::Attributes::Shadow/shadow_attrs> for more information.
 
-It takes the following options:
+=item B<shadowed_attrs>
 
-=over
+  $attrs = ContainedClass->( $container, $instance );
 
-=item fmt
-
-This is a reference to a subroutine which should return a modified
-attribute name (e.g. to prevent attribute collisions).  It is passed
-the attribute name as its first parameters.
-
-=item attrs
-
-This is a list of attributes to shadow; this overrides the list
-provided by the contained class in the call to B<shadowable_attrs>.
-
-=back
+Return a hash of attributes shadowed into C<$container>, which may be
+either a class name or an object. The C<$instance> parameter is
+optional, and indicates the contained object instance whose attributes
+should be extracted.  See L<MooX::Attributes::Shadow/shadowed_attrs>
+for more information.
 
 =item B<xtract_attrs>
 
-  %shadowed_attrs = ContainedClass->xtract_attrs( $obj );
+  %attrs = ContainedClass->xtract_attrs( $container_obj, $instance );
 
-This is extracts the shadowed attributes from an object instantiated
-from the containing class.
+After the container class is instantiated, B<xtract_attrs> is used to
+extract attributes for the contained object from the container object.
+
+The C<$instance> parameter is optional, and indicates the contained
+object instance whose attributes should be extracted.
 
 =back
 

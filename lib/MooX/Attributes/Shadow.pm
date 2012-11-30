@@ -24,7 +24,7 @@ package MooX::Attributes::Shadow;
 use strict;
 use warnings;
 
-our $VERSION = '0.01_03';
+our $VERSION = '0.01_04';
 
 use Carp;
 use Params::Check qw[ check last_error ];
@@ -124,7 +124,7 @@ sub shadowed_attrs {
 
     my ( $from, $to, $instance, $map )= &_resolve_attr_env;
 
-    return { map { $_, $map->{$_}{alias} } keys %$map }
+    return { map { $map->{$_}{alias}, $_ } keys %$map }
 }
 
 sub xtract_attrs {
@@ -164,51 +164,77 @@ MooX::Attributes::Shadow - shadow attributes of contained objects
 
   # create attributes shadowing class Foo's a and b attributes, with a
   # prefix to avoid collisions.
-  shadow_attrs( 'Foo',
-               attrs => [ qw( a b ) ],
-               fmt => sub { 'pfx_' . shift },
-             );
+  shadow_attrs( Foo =>
+                attrs => [ qw( a b ) ],
+                fmt => sub { 'pfx_' . shift },
+              );
 
-  # later in the code, use the attributes when creating a new Foo
-  # object.
-
-  sub create_foo {
-    my $self = shift;
-    my $foo = Foo->new( xtract_attrs( Foo => $self ) );
-  }
+  # create an attribute which holds the contained oject, and
+  # delegate the shadowed accessors to it.
+  has foo   => ( is => 'ro',
+                 lazy => 1,
+                 default => sub { Foo->new( xtract_attrs( Foo => shift ) ) },
+                 handles => shadowed_attrs( Foo => __PACKAGE__ ),
+               );
 
 
 =head1 DESCRIPTION
 
-Container classes (which contain other objects) at times need
-to reflect the contained objects' attributes in their own attributes.
+Classes which contain other objects at times need to
+reflect the contained objects' attributes in their own attributes.
 
-For example, if class B<Foo> has attribute I<a>, and class B<Bar>
-contains and instantiates class B<Foo>, it may need to provide a means
-of specifying a value for B<Foo>'s I<a> attribute.
+In most cases, simple method delegation will suffice:
 
-Typically, one might do this:
+  package ContainsFoo;
 
-  package Bar;
+  has foo => ( is => 'ro',
+               isa => sub { die unless eval { shift->isa('Foo') } },
+               handles => [ 'a' ],
+             );
 
-  use Moo;
-  use Foo;
+However, method delegation does not kick in when attributes are
+specified during instantiation of the I<container> class.  For
+example, in
 
-  has a => ( is => 'ro' );
+  ContainsFoo->new( a => 1 );
 
-  has foo   => ( is => 'ro',
-                 lazy => 1,
-                 default => sub { Foo->new( shift->a ) }
-               );
+the delegated method for C<a> is I<not> called, and C<a> is simply dropped.
 
+One way of dealing with this is to establish proxy attributes which
+shadow C<Foo>'s attributes, and delay passing them on until after
+the container object has been instantiated:
 
-This is tedious when more than one attribute is propagated.  If
-B<Bar> has its own I<a> attribute, then one must do more work to
+  has _a => ( is => 'ro', init_arg => 'a' );
+
+  sub BUILD {
+
+     my $self = shift;
+
+     $self->foo->a( $self->_a );
+
+  }
+
+This requires that C<Foo>'s C<a> attribute be of type C<rw>.  If the
+C<foo> attribute can be constructed on the fly,
+
+  has foo => ( is => 'ro',
+               handles => [ 'a' ],
+               lazy => 1,
+               sub default { my $self = shift,
+                             Foo->new( a => $self->_a ) }
+             )
+
+Then C<Foo>'s attribute can be of type C<ro>.
+
+This is tedious when more than one attribute is propagated.  If the
+container has its own I<a> attribute, then one must do more work to
 avoid name space collisions.
 
-B<MooX::Attributes::Shadow> provides a means to reducing the agony.
-It automatically creates attributes which shadow contained objects'
-attributes and easily extracts them for subsequent use.
+B<MooX::Attributes::Shadow> provides a means of registering the
+attributes to be shadowed, automatically creating proxy attributes in
+the container class, and easily extracting the shadowed attributes and
+values from the container class for use in the contained class's
+constructor.
 
 A contained class can use B<MooX::Attributes::Shadow::Role> to
 simplify things even further, so that container classes using it need
@@ -234,12 +260,12 @@ It takes the following options:
 
 This is a reference to a subroutine which should return a modified
 attribute name (e.g. to prevent attribute collisions).  It is passed
-the attribute name as its first parameters.
+the attribute name as its first parameter.
 
 =item instance
 
 In the case where more than one instance of an object is contained,
-this is used to identify an individual instance.
+this (string) is used to identify an individual instance.
 
 =item private
 
@@ -259,8 +285,17 @@ name or an object. The C<$instance> parameter is optional, and
 indicates the contained object instance whose attributes should be
 extracted.
 
-The hash keys are the attribute names in the contained class; the
-hash values are the attribute names in the container class.
+The hash keys are the attribute initialization names (not the mangled
+ones) in the I<container> class; the hash values are the attribute
+names in the I<contained> class.  This makes it easy to delegate
+accessors to the contained class:
+
+  has foo   => ( is => 'ro',
+                 lazy => 1,
+                 default => sub { Foo->new( xtract_attrs( Foo => shift ) ) },
+                 handles => shadowed_attrs( Foo => __PACKAGE__ ),
+               );
+
 
 =item B<xtract_attrs>
 
@@ -275,6 +310,8 @@ The C<$instance> parameter is optional, and indicates the contained
 object instance whose attributes should be extracted.
 
 =back
+
+
 
 =head1 COPYRIGHT & LICENSE
 
