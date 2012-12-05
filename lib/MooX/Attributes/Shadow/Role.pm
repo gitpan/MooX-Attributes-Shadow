@@ -23,7 +23,7 @@ package MooX::Attributes::Shadow::Role;
 
 use strict;
 
-our $VERSION = '0.01_04';
+our $VERSION = '0.01_05';
 
 use Moo::Role;
 
@@ -33,7 +33,6 @@ use MooX::Attributes::Shadow ':all';
 sub shadowable_attrs (@) {
 
     my $attrs = [ @_ ];
-    my $from = caller;
 
     ## no critic (ProhibitNoStrict)
     no strict 'refs';
@@ -83,7 +82,7 @@ MooX::Attributes::Shadow::Role - enumerate shadowable attributes in a contained 
   has foo   => ( is => 'ro',
                  lazy => 1,
                  default => sub { Foo->new( Foo->xtract_attrs(  shift ) ) },
-                 handles => Foo->shadowed_attrs(  __PACKAGE__ ),
+                 handles => Foo->shadowed_attrs,
                );
 
 
@@ -131,27 +130,78 @@ shadowed as an array:
 
 This method creates read-only attributes shadowing the
 I<ContainedClass>'s shadowable attributes in the class which calls it.
-See L<MooX::Attributes::Shadow/shadow_attrs> for more information.
+
+It takes the following options:
+
+=over
+
+=item fmt
+
+This is a reference to a subroutine which should return a modified
+attribute name (e.g. to prevent attribute collisions).  It is passed
+the attribute name as its first parameter.
+
+=item instance
+
+In the case where more than one instance of an object is contained,
+this (string) is used to identify an individual instance.
+
+=item private
+
+If true, the actual attribute name is mangled; the attribute
+initialization name is left untouched (see the C<init_arg> option to
+the B<Moo> C<has> subroutine).  This defaults to true.
+
+=back
 
 =item B<shadowed_attrs>
 
-  $attrs = ContainedClass->( $container, $instance );
+  $attrs = ContainedClass->( [$container,] \%options );
 
-Return a hash of attributes shadowed into C<$container>, which may be
-either a class name or an object. The C<$instance> parameter is
-optional, and indicates the contained object instance whose attributes
-should be extracted.  See L<MooX::Attributes::Shadow/shadowed_attrs>
-for more information.
+Return a hash of attributes shadowed into C<$container>.  If
+C<$container> is provided it may be either a class name or an
+object. If it is not provided, the package name of the calling routine
+is used.
+
+It takes the following options:
+
+=over
+
+=item instance
+
+In the case where more than one instance of an object is contained,
+this (string) is used to identify an individual instance.
+
+=back
+
+The keys in the returned hash are the attribute initialization names
+(not the mangled ones) in the I<container> class; the hash values are
+the attribute names in the I<contained> class.  This makes it easy to
+delegate accessors to the contained class:
+
+  has foo   => ( is => 'ro',
+                 lazy => 1,
+                 default => sub { Foo->new( Foo->xtract_attrs( shift ) ) },
+                 handles => Foo->shadowed_attrs,
+               );
 
 =item B<xtract_attrs>
 
-  %attrs = ContainedClass->xtract_attrs( $container_obj, $instance );
+  %attrs = ContainedClass->xtract_attrs( $container_obj, \%options );
 
 After the container class is instantiated, B<xtract_attrs> is used to
 extract attributes for the contained object from the container object.
 
-The C<$instance> parameter is optional, and indicates the contained
-object instance whose attributes should be extracted.
+It takes the following options:
+
+=over
+
+=item instance
+
+In the case where more than one instance of an object is contained,
+this (string) is used to identify an individual instance.
+
+=back
 
 =back
 

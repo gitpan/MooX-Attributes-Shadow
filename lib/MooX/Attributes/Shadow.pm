@@ -24,7 +24,7 @@ package MooX::Attributes::Shadow;
 use strict;
 use warnings;
 
-our $VERSION = '0.01_04';
+our $VERSION = '0.01_05';
 
 use Carp;
 use Params::Check qw[ check last_error ];
@@ -42,9 +42,9 @@ my %MAP;
 
 sub shadow_attrs {
 
-    my $from = shift;
+    my $contained = shift;
 
-    my $to = caller;
+    my $container = caller;
 
     my $args = check( {
             fmt => {
@@ -59,20 +59,20 @@ sub shadow_attrs {
 
     unless ( exists $args->{attrs} ) {
 
-        $args->{attrs} = [ eval { $from->shadowable_attrs } ];
+        $args->{attrs} = [ eval { $contained->shadowable_attrs } ];
 
         croak( "must specify attrs or call shadowable_attrs in shadowed class" )
           if $@;
 
     }
 
-    my $has = "${to}::has";
+    my $has = "${container}::has";
 
     my %map;
     for my $attr ( @{ $args->{attrs} } ) {
 
         my $alias = $args->{fmt}     ? $args->{fmt}->( $attr )    : $attr;
-        my $priv  = $args->{private} ? "_shadow_${from}_${alias}" : $alias;
+        my $priv  = $args->{private} ? "_shadow_${contained}_${alias}" : $alias;
         $priv =~ s/::/_/g;
         $map{$attr} = { priv => $priv, alias => $alias };
 
@@ -89,13 +89,13 @@ sub shadow_attrs {
 
     if ( defined $args->{instance} ) {
 
-        $MAP{$from}{$to}{instance}{ $args->{instance} } = \%map;
+        $MAP{$contained}{$container}{instance}{ $args->{instance} } = \%map;
 
     }
 
     else {
 
-        $MAP{$from}{$to}{default} = \%map;
+        $MAP{$contained}{$container}{default} = \%map;
 
     }
 
@@ -104,32 +104,50 @@ sub shadow_attrs {
 
 sub _resolve_attr_env {
 
-    my ( $from, $to, $instance ) = @_;
+    my ( $contained, $container, $options ) = @_;
 
-    # from should be resolved into a class name
-    $from = blessed $from || $from;
+    # contained should be resolved into a class name
+    my $containedClass = blessed $contained || $contained;
 
-    # allow $to to be either a class or an object
-    my $Class_to   = blessed $to   || $to;
+    # allow $container to be either a class or an object
+    my $containerClass = blessed $container || $container;
 
-    my $map = defined $instance ? $MAP{$from}{$Class_to}{instance}{$instance} : $MAP{$from}{$Class_to}{default};
+    my $map = defined $options->{instance}
+            ? $MAP{$containedClass}{$containerClass}{instance}{$options->{instance}}
+	    : $MAP{$containedClass}{$containerClass}{default};
 
-    croak( "attributes must first be shadowed using ${from}::shadow_attrs\n" )
+    croak( "attributes must first be shadowed using ${containedClass}::shadow_attrs\n" )
       unless defined $map;
 
-    return ( $from, $to, $instance, $map );
+    return $map;
 }
+
+# call as
+# shadowed_attrs( $ContainedClass, [ $container ], \%options)
 
 sub shadowed_attrs {
 
-    my ( $from, $to, $instance, $map )= &_resolve_attr_env;
+    my $containedClass = shift;
+    my $options = 'HASH' eq ref $_[-1] ? pop() : {};
+
+    my $containerClass = @_ ? shift : caller();
+
+    my $map = _resolve_attr_env( $containedClass, $containerClass, $options );
 
     return { map { $map->{$_}{alias}, $_ } keys %$map }
 }
 
+# call as
+# xtract_attrs( $ContainedClass, $container_obj, \%options)
 sub xtract_attrs {
 
-    my ( $from, $to, $instance, $map )= &_resolve_attr_env;
+    my $containedClass = shift;
+    my $options = 'HASH' eq ref $_[-1] ? pop() : {};
+    my $container = shift;
+    my $containerClass = blessed $container or
+      croak( "container_obj parameter is not a container object\n" );
+
+    my $map = _resolve_attr_env( $containedClass, $containerClass, $options );
 
     my %attr;
     while( my ($attr, $names) = each %$map ) {
@@ -137,12 +155,11 @@ sub xtract_attrs {
 	my $priv = $names->{priv};
 	my $has = "_has_${priv}";
 
-	$attr{$attr} = $to->$priv
-	  if $to->$has;
+	$attr{$attr} = $container->$priv
+	  if $container->$has;
     }
 
     return %attr;
-
 }
 
 1;
@@ -277,37 +294,55 @@ the B<Moo> C<has> subroutine).  This defaults to true.
 
 =item B<shadowed_attrs>
 
-  $attrs = shadowed_attrs( $contained, $container, $instance );
+  $attrs = shadowed_attrs( $contained, [ $container,] \%options );
 
 Return a hash of attributes shadowed from C<$contained> into
 C<$container>.  C<$contained> and C<$container> may either be a class
-name or an object. The C<$instance> parameter is optional, and
-indicates the contained object instance whose attributes should be
-extracted.
+name or an object. If C<$container> is not specified, the package name
+of the calling routine is used.
 
-The hash keys are the attribute initialization names (not the mangled
-ones) in the I<container> class; the hash values are the attribute
-names in the I<contained> class.  This makes it easy to delegate
-accessors to the contained class:
+It takes the following options:
+
+=over
+
+=item instance
+
+In the case where more than one instance of an object is contained,
+this (string) is used to identify an individual instance.
+
+=back
+
+The keys in the returned hash are the attribute initialization names
+(not the mangled ones) in the I<container> class; the hash values are
+the attribute names in the I<contained> class.  This makes it easy to
+delegate accessors to the contained class:
 
   has foo   => ( is => 'ro',
                  lazy => 1,
                  default => sub { Foo->new( xtract_attrs( Foo => shift ) ) },
-                 handles => shadowed_attrs( Foo => __PACKAGE__ ),
+                 handles => shadowed_attrs( 'Foo' ),
                );
 
 
 =item B<xtract_attrs>
 
-  %attrs = xtract_attrs( $contained, $container_obj, $instance );
+  %attrs = xtract_attrs( $contained, $container_obj, \%options );
 
 After the container class is instantiated, B<xtract_attrs> is used to
 extract attributes for the contained object from the container object.
 C<$contained> may be either a class name or an object in the contained
 class.
 
-The C<$instance> parameter is optional, and indicates the contained
-object instance whose attributes should be extracted.
+It takes the following options:
+
+=over
+
+=item instance
+
+In the case where more than one instance of an object is contained,
+this (string) is used to identify an individual instance.
+
+=back
 
 =back
 

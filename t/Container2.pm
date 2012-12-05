@@ -1,5 +1,8 @@
 package Container2;
 
+use strict;
+use warnings;
+
 use lib 't';
 
 use Moo;
@@ -13,7 +16,7 @@ has foo => (
     lazy    => 1,
     default => sub {
 	my $self = shift;
-	[ map { Contained->new( xtract_attrs( 'Contained', $self, $_ ) ) }
+	[ map { Contained->new( xtract_attrs( 'Contained', $self, { instance => $_ } ) ) }
 	  0, 1
 	] }
     );

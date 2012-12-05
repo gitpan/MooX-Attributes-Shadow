@@ -30,4 +30,4 @@ resources:
   bugtracker: https://rt.cpan.org/Public/Dist/Display.html?Name=MooX-Attributes-Shadow
   license: http://opensource.org/licenses/gpl-license.php
   repository: https://bitbucket.org/djerius/moox-attributes-shadow
-version: 0.01_04
+version: 0.01_05
