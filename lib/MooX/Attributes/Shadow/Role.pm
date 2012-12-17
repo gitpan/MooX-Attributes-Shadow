@@ -23,7 +23,7 @@ package MooX::Attributes::Shadow::Role;
 
 use strict;
 
-our $VERSION = '0.01_05';
+our $VERSION = '0.01_06';
 
 use Moo::Role;
 

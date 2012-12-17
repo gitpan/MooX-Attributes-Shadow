@@ -15,6 +15,7 @@ author_requires 'Test::Pod';
 tests_recursive;
 
 test_requires 'Test::More';
+test_requires 'Test::Deep';
 test_requires 'Test::Exception';
 
 requires 'Moo';
