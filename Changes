@@ -1,3 +1,11 @@
+0.02 - Wed Dec 26 15:08:17 EST 2012
+
+Stable release
+
+[INTERNALS]
+
+    * be more clever about getting has() sub from container class
+
 0.01_06 - Mon Dec 17 11:54:10 EST 2012
 
 [BUILD FIX]

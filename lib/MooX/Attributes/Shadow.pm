@@ -24,7 +24,7 @@ package MooX::Attributes::Shadow;
 use strict;
 use warnings;
 
-our $VERSION = '0.01_06';
+our $VERSION = '0.02';
 
 use Carp;
 use Params::Check qw[ check last_error ];
@@ -66,7 +66,8 @@ sub shadow_attrs {
 
     }
 
-    my $has = "${container}::has";
+    my $has = $container->can( 'has' )
+      or croak( "container class $container does not have a 'has' function.  Is it really a Moo class?" );
 
     my %map;
     for my $attr ( @{ $args->{attrs} } ) {
@@ -191,7 +192,7 @@ MooX::Attributes::Shadow - shadow attributes of contained objects
   has foo   => ( is => 'ro',
                  lazy => 1,
                  default => sub { Foo->new( xtract_attrs( Foo => shift ) ) },
-                 handles => shadowed_attrs( Foo => __PACKAGE__ ),
+                 handles => shadowed_attrs( Foo ),
                );
 
 

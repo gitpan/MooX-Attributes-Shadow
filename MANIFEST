@@ -28,6 +28,7 @@ t/conter_instance.t
 t/conter_private_attr.t
 t/conter_public_attr.t
 t/err_attrs.t
+t/not-moo.t
 xt/nobreakpoints.t
 xt/perlcritic.t
 xt/pod-coverage.t
