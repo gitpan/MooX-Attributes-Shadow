@@ -14,13 +14,15 @@ author_requires 'Test::Pod';
 
 tests_recursive;
 
+test_requires 'Moo';
 test_requires 'Test::More';
 test_requires 'Test::Deep';
 test_requires 'Test::Exception';
 
 requires 'Moo';
 requires 'Moo::Role';
-requires 'MooX::Types::MooseLike' => 0.11;
 requires 'Params::Check';
+
+no_index directory => qw[ inc t xt ];
 
 WriteAll;

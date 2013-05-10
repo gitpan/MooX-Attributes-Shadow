@@ -24,10 +24,12 @@ t/Container2.pm
 t/Container3.pm
 t/conted_public_attr.t
 t/conter_alias.t
+t/conter_alias_hash.t
 t/conter_instance.t
 t/conter_private_attr.t
 t/conter_public_attr.t
 t/err_attrs.t
+t/new_from_attrs.t
 t/not-moo.t
 xt/nobreakpoints.t
 xt/perlcritic.t

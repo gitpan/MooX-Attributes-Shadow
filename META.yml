@@ -4,6 +4,7 @@ author:
   - 'Smithsonian Astrophysical Observatory'
 build_requires:
   ExtUtils::MakeMaker: 6.36
+  Moo: 0
   Test::Deep: 0
   Test::Exception: 0
   Test::More: 0
@@ -25,10 +26,9 @@ no_index:
 requires:
   Moo: 0
   Moo::Role: 0
-  MooX::Types::MooseLike: 0.11
   Params::Check: 0
 resources:
   bugtracker: https://rt.cpan.org/Public/Dist/Display.html?Name=MooX-Attributes-Shadow
   license: http://opensource.org/licenses/gpl-license.php
   repository: https://bitbucket.org/djerius/moox-attributes-shadow
-version: 0.02
+version: 0.03

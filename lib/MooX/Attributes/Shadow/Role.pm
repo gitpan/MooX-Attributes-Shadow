@@ -32,7 +32,7 @@ use MooX::Attributes::Shadow ':all';
 ## no critic (ProhibitSubroutinePrototypes)
 sub shadowable_attrs (@) {
 
-    my $attrs = [ @_ ];
+    my $attrs = [@_];
 
     ## no critic (ProhibitNoStrict)
     no strict 'refs';
@@ -43,6 +43,49 @@ sub shadowable_attrs (@) {
     return;
 }
 
+sub new_from_attrs (@) {
+
+    my $contained = shift;
+
+    my $container = shift;
+
+    # handle the following cases:
+    # @args = ( \%options );
+    # @args = ( \%options, %attr );
+    # @args = ( \%options, \%attrs );
+    # @args = ( %attr );
+
+    my $options = {};
+    my %attrs;
+
+    if ( @_ == 1 ) {
+
+	$options = shift;
+
+    }
+
+    elsif ( @_ == 2 && 'HASH' eq ref $_[0] && 'HASH' eq ref $_[1] ) {
+
+	$options = shift;
+	%attrs = %{ shift() };
+
+    }
+
+    elsif ( @_ % 2 ) {
+
+	$options = shift;
+	%attrs = @_;
+
+    }
+
+    else {
+
+	%attrs = @_;
+
+    }
+
+    return $contained->new( $contained->xtract_attrs( $container, $options ), %attrs );
+}
 
 1;
 
@@ -81,7 +124,7 @@ MooX::Attributes::Shadow::Role - enumerate shadowable attributes in a contained 
   # delegate the shadowed accessors to it.
   has foo   => ( is => 'ro',
                  lazy => 1,
-                 default => sub { Foo->new( Foo->xtract_attrs(  shift ) ) },
+                 default => sub { Foo->new_from_attrs( shift ) },
                  handles => Foo->shadowed_attrs,
                );
 
@@ -202,6 +245,29 @@ In the case where more than one instance of an object is contained,
 this (string) is used to identify an individual instance.
 
 =back
+
+=item B<new_from_attrs>
+
+  $obj = ContainedClass->new_from_attrs( $container_obj );
+  $obj = ContainedClass->new_from_attrs( $container_obj, %attr );
+  $obj = ContainedClass->new_from_attrs( $container_obj, \%options );
+  $obj = ContainedClass->new_from_attrs( $container_obj, \%options, \%attr );
+  $obj = ContainedClass->new_from_attrs( $container_obj, \%options,  %attr );
+
+Create a new contained object from the attributes shadowed in the
+container object.  Additional attributes and values may be passed.
+
+It takes the following options:
+
+=over
+
+=item instance
+
+In the case where more than one instance of an object is contained,
+this (string) is used to identify an individual instance.
+
+=back
+
 
 =back
 

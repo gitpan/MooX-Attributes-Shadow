@@ -24,7 +24,7 @@ package MooX::Attributes::Shadow;
 use strict;
 use warnings;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 use Carp;
 use Params::Check qw[ check last_error ];
@@ -50,7 +50,10 @@ sub shadow_attrs {
             fmt => {
                 allow => sub { ref $_[0] eq 'CODE' }
             },
-            attrs => { allow => sub { ref $_[0] eq 'ARRAY' && @{ $_[0] } }, },
+
+            attrs => { allow => sub { 'ARRAY' eq ref $_[0] && @{ $_[0] }
+					or 'HASH' eq ref $_[0] },
+		     },
             private  => { default => 1 },
             instance => {},
         },
@@ -67,12 +70,19 @@ sub shadow_attrs {
     }
 
     my $has = $container->can( 'has' )
-      or croak( "container class $container does not have a 'has' function.  Is it really a Moo class?" );
+      or croak( "container class $container does not have a 'has' function.",
+		" Is it really a Moo class?" );
+
+    my %attr =
+      'ARRAY' eq ref $args->{attrs} ? ( map { $_ => undef } @{$args->{attrs}} )
+	                           : %{$args->{attrs}};
 
     my %map;
-    for my $attr ( @{ $args->{attrs} } ) {
+    while( my ( $attr, $alias ) = each %attr ) {
 
-        my $alias = $args->{fmt}     ? $args->{fmt}->( $attr )    : $attr;
+	$alias = $args->{fmt} ? $args->{fmt}->( $attr ) : $attr
+	  unless defined $alias;
+
         my $priv  = $args->{private} ? "_shadow_${contained}_${alias}" : $alias;
         $priv =~ s/::/_/g;
         $map{$attr} = { priv => $priv, alias => $alias };
@@ -182,10 +192,7 @@ MooX::Attributes::Shadow - shadow attributes of contained objects
 
   # create attributes shadowing class Foo's a and b attributes, with a
   # prefix to avoid collisions.
-  shadow_attrs( Foo =>
-                attrs => [ qw( a b ) ],
-                fmt => sub { 'pfx_' . shift },
-              );
+  shadow_attrs( Foo => attrs => { a => 'pfx_a', b => 'pfx_b' } );
 
   # create an attribute which holds the contained oject, and
   # delegate the shadowed accessors to it.
@@ -195,58 +202,15 @@ MooX::Attributes::Shadow - shadow attributes of contained objects
                  handles => shadowed_attrs( Foo ),
                );
 
+  $a = Bar->new( pfx_a => 3 );
+  $a->pfx_a == $a->foo->a;
 
 =head1 DESCRIPTION
 
-Classes which contain other objects at times need to
-reflect the contained objects' attributes in their own attributes.
-
-In most cases, simple method delegation will suffice:
-
-  package ContainsFoo;
-
-  has foo => ( is => 'ro',
-               isa => sub { die unless eval { shift->isa('Foo') } },
-               handles => [ 'a' ],
-             );
-
-However, method delegation does not kick in when attributes are
-specified during instantiation of the I<container> class.  For
-example, in
-
-  ContainsFoo->new( a => 1 );
-
-the delegated method for C<a> is I<not> called, and C<a> is simply dropped.
-
-One way of dealing with this is to establish proxy attributes which
-shadow C<Foo>'s attributes, and delay passing them on until after
-the container object has been instantiated:
-
-  has _a => ( is => 'ro', init_arg => 'a' );
-
-  sub BUILD {
-
-     my $self = shift;
-
-     $self->foo->a( $self->_a );
-
-  }
-
-This requires that C<Foo>'s C<a> attribute be of type C<rw>.  If the
-C<foo> attribute can be constructed on the fly,
-
-  has foo => ( is => 'ro',
-               handles => [ 'a' ],
-               lazy => 1,
-               sub default { my $self = shift,
-                             Foo->new( a => $self->_a ) }
-             )
-
-Then C<Foo>'s attribute can be of type C<ro>.
-
-This is tedious when more than one attribute is propagated.  If the
-container has its own I<a> attribute, then one must do more work to
-avoid name space collisions.
+If an object contains another object (i.e. the first object's
+attribute is a reference to the second), it's often useful to access
+the contained object's attributes as if they were in the container
+object.
 
 B<MooX::Attributes::Shadow> provides a means of registering the
 attributes to be shadowed, automatically creating proxy attributes in
@@ -256,7 +220,104 @@ constructor.
 
 A contained class can use B<MooX::Attributes::Shadow::Role> to
 simplify things even further, so that container classes using it need
-not know the names of the attributes to shadow.
+not know the names of the attributes to shadow.  This is the preferred
+approach.
+
+
+=head2 The Problem
+
+An object in class C<A> (C<$a>) has an attribute (C<< $a->b >>) which
+contains a reference to an object in class C<B> (C<$b>), which itself
+has an attribute C<< $b->attr >>, which you want to transparently
+access from C<$a>, e.g.
+
+  $a->attr => $a->b->attr;
+
+One approach might be to use method delegation:
+
+  package B;
+
+  has attr => ( is => 'rw' );
+
+  package A;
+
+  has b => (
+     is => 'ro',
+     default => sub { B->new },
+     handles => [ 'attr' ]
+   );
+
+  $a = A->new;
+
+  $a->attr( 3 ); # works!
+
+But, what if C<attr> is a required parameter to C<B>'s constructor?  The
+default generator might look something like this:
+
+  has b => (
+     is => 'ro',
+     lazy => 1,
+     default => sub { B->new( shift->attr ) },
+     handles => [ 'attr' ]
+   );
+
+  $a = A->new( attr => 3 );  # doesn't work!
+
+(Note that C<b> now must be lazily created, so that C<$a> is in a
+deterministic state when asked for the value of C<attr>).
+
+However, this doesn't work, because C<$a> doesn't have an attribute
+called C<attr>; that's just a method delegated to C<< $a->b >>. Oops.
+
+If you don't mind explicitly calling C<< B->new >> in C<A>'s constructor,
+this works:
+
+  sub BUILDARGS {
+
+    my $args = shift->SUPER::BUILDARGS(@_);
+
+    $args->{b} //= B->new( attr => delete $args->{attr} );
+
+    return $args;
+  }
+
+  $a = A->new( attr => 3 );  # works!
+
+but now C<b> can't be lazily constructed.  To achieve that requires
+actually storing C<attr> in C<$a>.  We can do that with a proxy
+attribute which masquerades as C<attr> in C<A>'s constructor:
+
+  has _attr => ( is => 'ro', init_arg => 'attr' );
+
+  has b => (
+     is => 'ro',
+     lazy => 1,
+     default => sub { B->new( shift->_attr ) },
+     handles => [ 'attr' ]
+   );
+
+  $a = A->new( attr => 3 );  #  works!
+
+Simple, but what happens if
+
+=over
+
+=item *
+
+there's more than one attribute, or
+
+=item *
+
+there's more than one instance of C<B> to construct, or
+
+=item *
+
+C<A> has it's own attribute named C<attr>?
+
+=back
+
+Endless tedium and no laziness, that's what.  Hence this module.
+
 
 =head1 INTERFACE
 
@@ -264,13 +325,28 @@ not know the names of the attributes to shadow.
 
 =item B<shadow_attrs>
 
+   shadow_attrs( $contained_class, attrs => \%attrs, %options );
    shadow_attrs( $contained_class, attrs => \@attrs, %options );
 
-Create read-only attributes for the attributes in C<@attrs> and
+Create read-only attributes for the attributes in C<attrs> and
 associate them with C<$contained_class>.  There is no means of
 specifying additional attribute options.
 
-It takes the following options:
+If C<attrs> is a hash, the keys are the attribute names in the
+contained class and the values are the shadowed names in the container
+class.  Set the value to C<undef> to retain the original name.  For
+example,
+
+  { a => 'pfx_a', b => undef }
+
+The contained class's C<a> attribute is shadowed as C<pfx_a> in the
+container class, while the C<b> attribute is named the same in both
+classes.
+
+If C<attrs> is an array, the attributes in the container class are
+named the same as in the contained class.
+
+The following options are available:
 
 =over
 
@@ -278,7 +354,9 @@ It takes the following options:
 
 This is a reference to a subroutine which should return a modified
 attribute name (e.g. to prevent attribute collisions).  It is passed
-the attribute name as its first parameter.
+the attribute name as its first parameter.  If the C<attrs> parameter
+was passed as a hash, attributes with defined shadowed names are
+not passed to C<fmt>
 
 =item instance
 
@@ -318,11 +396,12 @@ The keys in the returned hash are the attribute initialization names
 the attribute names in the I<contained> class.  This makes it easy to
 delegate accessors to the contained class:
 
-  has foo   => ( is => 'ro',
-                 lazy => 1,
-                 default => sub { Foo->new( xtract_attrs( Foo => shift ) ) },
-                 handles => shadowed_attrs( 'Foo' ),
-               );
+  has foo => (
+     is => 'ro',
+     lazy => 1,
+     default => sub { Foo->new( xtract_attrs( Foo => shift ) ) },
+     handles => shadowed_attrs( 'Foo' ),
+  );
 
 
 =item B<xtract_attrs>
@@ -347,6 +426,9 @@ this (string) is used to identify an individual instance.
 
 =back
 
+=head1 THANKS
+
+Toby Inkster for the C<BUILDARGS> approach.
 
 
 =head1 COPYRIGHT & LICENSE

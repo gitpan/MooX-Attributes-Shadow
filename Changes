@@ -1,3 +1,19 @@
+0.03 - Thu May  9 22:57:41 EDT 2013
+
+Stable release
+
+Enhancement
+-----------
+
+* new role method, new_from_attr, allows easier construction of
+  contained object
+
+* shadowed attribute names are now more easily renamed by passing
+  a hash of attribute name pairs to shadow_attrs
+
+* more comprehensible docs.
+
+
 0.02 - Wed Dec 26 15:08:17 EST 2012
 
 Stable release
